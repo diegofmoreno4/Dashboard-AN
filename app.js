@@ -153,6 +153,15 @@ const fmt = {
 
 /* ── API Helpers ────────────────────────────────────────────── */
 
+/** Helper to get local date as YYYY-MM-DD */
+function toLocalISO(d) {
+    if (!d || isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 /** Build a Meta Graph API URL */
 function metaUrl(path, params = {}) {
     const qs = new URLSearchParams({ ...params, access_token: ACCESS_TOKEN });
@@ -236,31 +245,28 @@ function getDateParam(preset) {
         return `time_range=${encodeURIComponent(JSON.stringify({ since: start, until: end }))}`;
     }
     if (preset === 'this_month_today') return `date_preset=this_month`;
+    
     if (preset === 'this_month') {
         const today = new Date();
         const start = new Date(today.getFullYear(), today.getMonth(), 1);
         let end = new Date(today);
         end.setDate(end.getDate() - 1);
         if (end < start) end = start;
-        const toStr = d => d.toISOString().split('T')[0];
-        return `time_range=${encodeURIComponent(JSON.stringify({ since: toStr(start), until: toStr(end) }))}`;
+        return `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(start), until: toLocalISO(end) }))}`;
     }
+    
     if (preset === 'last_7d' || preset === 'last_14d' || preset === 'last_30d') {
         const today = new Date();
         const days = parseInt(preset.split('_')[1], 10);
         let end = new Date(today); end.setDate(end.getDate() - 1);
         let start = new Date(end); start.setDate(start.getDate() - days + 1);
-        const toStr = d => {
-            const offset = d.getTimezoneOffset() * 60000;
-            return new Date(d.getTime() - offset).toISOString().split('T')[0];
-        };
-        return `time_range=${encodeURIComponent(JSON.stringify({ since: toStr(start), until: toStr(end) }))}`;
+        return `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(start), until: toLocalISO(end) }))}`;
     }
+    
     return `date_preset=${preset}`;
 }
 
 function getPreviousPeriodParam(preset) {
-    const toStr = d => d.toISOString().split('T')[0];
     const today = new Date(); today.setHours(0, 0, 0, 0);
     let since, until;
     if (preset === 'last_7d') {
@@ -288,7 +294,7 @@ function getPreviousPeriodParam(preset) {
         until = new Date(s); until.setDate(until.getDate() - 1);
         since = new Date(until); since.setDate(since.getDate() - days + 1);
     } else { return null; }
-    return `time_range=${encodeURIComponent(JSON.stringify({ since: toStr(since), until: toStr(until) }))}`;
+    return `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(since), until: toLocalISO(until) }))}`;
 }
 
 /**
@@ -1153,7 +1159,6 @@ function computeRetainedByAccount(since, until) {
 
 function getGooglePrevDateRange(preset) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const str = d => d.toISOString().split('T')[0];
     let since, until;
     if (preset === 'last_7d') {
         until = new Date(today); until.setDate(until.getDate() - 7);
@@ -1174,39 +1179,40 @@ function getGooglePrevDateRange(preset) {
         since = new Date(today.getFullYear() - 1, 0, 1);
         until = new Date(today.getFullYear() - 1, 11, 31);
     } else { return null; }
-    return { since: str(since), until: str(until) };
+    return { since: toLocalISO(since), until: toLocalISO(until) };
 }
 
 function getGoogleDateRange(preset) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const str = d => d.toISOString().split('T')[0];
     if (preset === 'last_7d') {
         const s = new Date(today); s.setDate(s.getDate() - 7);
         const e = new Date(today); e.setDate(e.getDate() - 1);
-        return { since: str(s), until: str(e) };
+        return { since: toLocalISO(s), until: toLocalISO(e) };
     } else if (preset === 'last_14d') {
         const s = new Date(today); s.setDate(s.getDate() - 14);
         const e = new Date(today); e.setDate(e.getDate() - 1);
-        return { since: str(s), until: str(e) };
+        return { since: toLocalISO(s), until: toLocalISO(e) };
     } else if (preset === 'last_30d') {
         const s = new Date(today); s.setDate(s.getDate() - 30);
         const e = new Date(today); e.setDate(e.getDate() - 1);
-        return { since: str(s), until: str(e) };
+        return { since: toLocalISO(s), until: toLocalISO(e) };
     } else if (preset === 'this_month_today') {
-        return { since: str(new Date(today.getFullYear(), today.getMonth(), 1)), until: str(today) };
+        return { since: toLocalISO(new Date(today.getFullYear(), today.getMonth(), 1)), until: toLocalISO(today) };
     } else if (preset === 'this_month') {
         const start = new Date(today.getFullYear(), today.getMonth(), 1);
         let end = new Date(today); end.setDate(end.getDate() - 1);
         if (end < start) end = start;
-        return { since: str(start), until: str(end) };
+        return { since: toLocalISO(start), until: toLocalISO(end) };
     } else if (preset === 'last_month') {
         const s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
         const u = new Date(today.getFullYear(), today.getMonth(), 0);
-        return { since: str(s), until: str(u) };
+        return { since: toLocalISO(s), until: toLocalISO(u) };
     } else if (preset === 'this_year') {
-        return { since: str(new Date(today.getFullYear(), 0, 1)), until: str(today) };
+        return { since: toLocalISO(new Date(today.getFullYear(), 0, 1)), until: toLocalISO(today) };
     } else if (preset === 'custom') {
         return { since: document.getElementById('date-start').value, until: document.getElementById('date-end').value };
+    } else if (preset === 'maximum') {
+        return { since: '2024-01-01', until: '2029-12-31' }; // Wide range for maximum
     }
     return null;
 }
