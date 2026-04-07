@@ -384,7 +384,11 @@ async function fetch7dAlertData(accountId, param) {
     } catch (_) { return {}; }
 }
 
+// Creatives don't change with date — cache them for the session
+const creativesCache = {};
+
 async function fetchAdCreatives(accountId) {
+    if (creativesCache[accountId]) return creativesCache[accountId];
     const url = metaUrl(`${accountId}/ads`, {
         fields: 'id,effective_status,creative{thumbnail_url,image_url}',
         limit: 100,
@@ -396,6 +400,7 @@ async function fetchAdCreatives(accountId) {
         item.thumbnail = (ad.creative && (ad.creative.thumbnail_url || ad.creative.image_url)) || null;
         map[ad.id] = item;
     }
+    creativesCache[accountId] = map;
     return map;
 }
 
@@ -942,36 +947,29 @@ async function fetchAllData() {
 
     const datePreset = document.getElementById('date-select').value;
 
-    const promises = allAccounts.map(async (acc) => {
+    // ── Phase 1: Main insights only (spend, leads, daily chart) ─────────
+    // Renders the dashboard immediately with 2 requests per account
+    // instead of waiting for 6. Creatives, prev period, and 7d alerts
+    // are loaded in Phase 2 and merged in-place.
+    const phase1 = allAccounts.map(async (acc) => {
         try {
             const accPreset = capPreset(acc.id, datePreset);
-            const accPrevParam = getPreviousPeriodParam(accPreset);
-            // 7-day alert: last 7 days excluding today
-            const today7d = new Date(); today7d.setHours(0,0,0,0);
-            const end7d = new Date(today7d); end7d.setDate(end7d.getDate() - 1);
-            const start7d = new Date(end7d); start7d.setDate(start7d.getDate() - 6);
-            const alert7dParam = `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(start7d), until: toLocalISO(end7d) }))}`;
-            const accLimit = ACCOUNT_PAGE_LIMIT[acc.id] || 500;
-            const [rawAdData, rawDailyData, creativesMap, prevMetrics, prevAdMap, alert7dMap] = await Promise.all([
-                fetchInsights(acc.id, accPreset, { level: 'ad', limit: accLimit }),
+            const accLimit  = ACCOUNT_PAGE_LIMIT[acc.id] || 500;
+            const [rawAdData, rawDailyData] = await Promise.all([
+                fetchInsights(acc.id, accPreset, { level: 'ad',       limit: accLimit }),
                 fetchInsights(acc.id, accPreset, { level: 'campaign', timeIncrement: 1, limit: accLimit }),
-                fetchAdCreatives(acc.id),
-                accPrevParam ? fetchPreviousInsights(acc.id, accPrevParam) : Promise.resolve(null),
-                accPrevParam ? fetchPreviousAdInsights(acc.id, accPrevParam) : Promise.resolve({}),
-                fetch7dAlertData(acc.id, alert7dParam)
             ]);
 
-            // Discard results if a newer fetch has started
             if (myGeneration !== fetchGeneration) return;
 
             const filteredAds   = rawAdData.filter(ad => isCampaignAllowed(ad.campaign_id, ad.campaign_name));
             const filteredDaily = rawDailyData.filter(d  => isCampaignAllowed(d.campaign_id, d.campaign_name));
 
+            // Process ads without creatives/prev — enriched in Phase 2
             const pAds = filteredAds.map(ad => {
-                const processed = processAd(ad, creativesMap, acc.id);
-                processed.prev = prevAdMap[processed.adId] || null;
-                const a7d = alert7dMap[processed.adId];
-                processed.noLeads7d = a7d ? (a7d.spend > 0 && a7d.leads === 0) : false;
+                const processed = processAd(ad, {}, acc.id);
+                processed.prev      = null;
+                processed.noLeads7d = false;
                 return processed;
             });
             const pDaily = filteredDaily.map(row => processDaily(row, acc.id));
@@ -1017,19 +1015,63 @@ async function fetchAllData() {
                 ctr: accCtr,
                 cpc: accCpc,
                 cpl: accCpl,
-                prev: prevMetrics
+                prev: null, // filled in Phase 2
             });
         } catch (e) {
             console.error(`[Dashboard] Error cargando cuenta "${acc.name}" (${acc.id}):`, e.message || e);
         }
     });
 
-    await Promise.allSettled(promises);
-    // Only update UI if no newer fetch has started
+    await Promise.allSettled(phase1);
     if (myGeneration !== fetchGeneration) return;
+
+    // Show main data immediately — users see numbers without waiting for
+    // thumbnails, trend arrows, or 7d alert badges
     applyCurrentTab();
     setLoading(false);
     document.getElementById('badge-loading').classList.add('hidden');
+
+    // ── Phase 2: Secondary data (creatives cached, prev period, 7d alerts) ─
+    // alert7dParam is the same for all accounts — compute once
+    const t7 = new Date(); t7.setHours(0, 0, 0, 0);
+    const e7 = new Date(t7); e7.setDate(e7.getDate() - 1);
+    const s7 = new Date(e7); s7.setDate(s7.getDate() - 6);
+    const alert7dParam = `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(s7), until: toLocalISO(e7) }))}`;
+
+    const phase2 = allAccounts.map(async (acc) => {
+        try {
+            const accPreset   = capPreset(acc.id, datePreset);
+            const accPrevParam = getPreviousPeriodParam(accPreset);
+            const [creativesMap, prevMetrics, prevAdMap, alert7dMap] = await Promise.all([
+                fetchAdCreatives(acc.id), // served from cache on subsequent filter changes
+                accPrevParam ? fetchPreviousInsights(acc.id, accPrevParam)   : Promise.resolve(null),
+                accPrevParam ? fetchPreviousAdInsights(acc.id, accPrevParam) : Promise.resolve({}),
+                fetch7dAlertData(acc.id, alert7dParam),
+            ]);
+
+            if (myGeneration !== fetchGeneration) return;
+
+            // Enrich ads in-place (currentAdsData holds the same object refs)
+            for (const ad of globalAdsData) {
+                if (ad.accountId !== acc.id) continue;
+                const cr = creativesMap[ad.adId];
+                if (cr) { ad.thumbnail = cr.thumbnail; ad.status = cr.status; }
+                ad.prev      = prevAdMap[ad.adId] || null;
+                const a7d    = alert7dMap[ad.adId];
+                ad.noLeads7d = a7d ? (a7d.spend > 0 && a7d.leads === 0) : false;
+            }
+
+            // Update account-level prev metrics
+            const accEntry = globalAccountsData.find(a => a.accountId === acc.id);
+            if (accEntry) accEntry.prev = prevMetrics;
+        } catch (e) {
+            console.error(`[Dashboard] Error en datos secundarios "${acc.name}" (${acc.id}):`, e.message || e);
+        }
+    });
+
+    await Promise.allSettled(phase2);
+    if (myGeneration !== fetchGeneration) return;
+    applyCurrentTab(); // Re-render with enriched data (thumbnails, trends, alerts)
 }
 
 /* ── Google Ads — Data ──────────────────────────────────────── */
@@ -2029,11 +2071,14 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             customWrap.classList.add('hidden');
             const metaP = fetchAllData();
-            const auxP = Promise.all([fetchGoogleData(), fetchRetainedData()]);
+            // Google Sheets and Retained data cover all dates and are filtered
+            // client-side — no need to re-fetch on every filter change
+            const needsAux = googleRawDaily.length === 0 || retainedRawRows.length === 0;
+            const auxP = needsAux ? Promise.all([fetchGoogleData(), fetchRetainedData()]) : Promise.resolve();
             await metaP;
             applyCurrentTab();
             await auxP;
-            applyCurrentTab();
+            if (needsAux) applyCurrentTab();
         }
     });
 
@@ -2043,11 +2088,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!start || !end) { alert('Por favor selecciona fecha de inicio y fin.'); return; }
         if (start > end)    { alert('La fecha de inicio debe ser anterior o igual a la de fin.'); return; }
         const metaP = fetchAllData();
-        const auxP = Promise.all([fetchGoogleData(), fetchRetainedData()]);
+        const needsAux = googleRawDaily.length === 0 || retainedRawRows.length === 0;
+        const auxP = needsAux ? Promise.all([fetchGoogleData(), fetchRetainedData()]) : Promise.resolve();
         await metaP;
         applyCurrentTab();
         await auxP;
-        applyCurrentTab();
+        if (needsAux) applyCurrentTab();
     });
 
     document.getElementById('table-search').addEventListener('input', applyTableFilters);
