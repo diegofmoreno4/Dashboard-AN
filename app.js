@@ -275,7 +275,7 @@ function getDateParam(preset) {
 
 function getPreviousPeriodParam(preset) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    let since, until;
+    let since, until, currentStart, currentEnd;
     if (preset === 'last_7d') {
         // Últimos 7 días hasta ayer (excluyendo hoy)
         currentEnd = new Date(today); currentEnd.setDate(currentEnd.getDate() - 1);
