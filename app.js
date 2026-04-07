@@ -1164,21 +1164,13 @@ async function fetchRetainedData() {
 
 function computeRetainedByAccount(since, until, filterMetaId = null) {
     const result = {};
-    let targetGoogleAccountId = null;
-    
-    // Si hay un filtro de Meta, encontrar la cuenta de Google correspondiente
-    if (filterMetaId && filterMetaId !== 'all') {
-        const entry = Object.entries(GOOGLE_ACCOUNTS).find(([, v]) => v.metaId === filterMetaId);
-        if (entry) {
-            targetGoogleAccountId = entry[0];
-        }
-    }
     
     for (const r of retainedRawRows) {
         if (since && r.date < since) continue;
         if (until && r.date > until) continue;
         // Si hay un filtro de cuenta, solo incluir registros de esa cuenta
-        if (targetGoogleAccountId && r.accountId !== targetGoogleAccountId) continue;
+        // r.accountId ya es el Meta ID, así que comparamos directamente con filterMetaId
+        if (filterMetaId && filterMetaId !== 'all' && r.accountId !== filterMetaId) continue;
         result[r.accountId] = (result[r.accountId] || 0) + 1;
     }
     return result;
