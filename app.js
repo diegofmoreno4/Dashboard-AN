@@ -284,9 +284,12 @@ function getPreviousPeriodParam(preset) {
     } else if (preset === 'last_30d') {
         until = new Date(today); until.setDate(until.getDate() - 31);
         since = new Date(today); since.setDate(since.getDate() - 60);
-    } else if (preset === 'this_month' || preset === 'this_month_today') {
-        since = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        until = new Date(today.getFullYear(), today.getMonth(), 0);
+    } else if (preset === 'this_month_today') {
+        since = new Date(today.getFullYear(), today.getMonth(), 1);
+        until = new Date(today);
+    } else if (preset === 'this_month') {
+        since = new Date(today.getFullYear(), today.getMonth(), 1);
+        until = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     } else if (preset === 'last_month') {
         since = new Date(today.getFullYear(), today.getMonth() - 2, 1);
         until = new Date(today.getFullYear(), today.getMonth() - 1, 0);
@@ -1203,11 +1206,23 @@ async function fetchRetainedData() {
     }
 }
 
-function computeRetainedByAccount(since, until) {
+function computeRetainedByAccount(since, until, filterMetaId = null) {
     const result = {};
+    let targetGoogleAccountId = null;
+    
+    // Si hay un filtro de Meta, encontrar la cuenta de Google correspondiente
+    if (filterMetaId && filterMetaId !== 'all') {
+        const entry = Object.entries(GOOGLE_ACCOUNTS).find(([, v]) => v.metaId === filterMetaId);
+        if (entry) {
+            targetGoogleAccountId = entry[0];
+        }
+    }
+    
     for (const r of retainedRawRows) {
         if (since && r.date < since) continue;
         if (until && r.date > until) continue;
+        // Si hay un filtro de cuenta, solo incluir registros de esa cuenta
+        if (targetGoogleAccountId && r.accountId !== targetGoogleAccountId) continue;
         result[r.accountId] = (result[r.accountId] || 0) + 1;
     }
     return result;
@@ -1225,9 +1240,12 @@ function getGooglePrevDateRange(preset) {
     } else if (preset === 'last_30d') {
         until = new Date(today); until.setDate(until.getDate() - 30);
         since = new Date(today); since.setDate(since.getDate() - 60);
-    } else if (preset === 'this_month' || preset === 'this_month_today') {
-        since = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        until = new Date(today.getFullYear(), today.getMonth(), 0);
+    } else if (preset === 'this_month_today') {
+        since = new Date(today.getFullYear(), today.getMonth(), 1);
+        until = new Date(today);
+    } else if (preset === 'this_month') {
+        since = new Date(today.getFullYear(), today.getMonth(), 1);
+        until = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     } else if (preset === 'last_month') {
         since = new Date(today.getFullYear(), today.getMonth() - 2, 1);
         until = new Date(today.getFullYear(), today.getMonth() - 1, 0);
@@ -1615,7 +1633,8 @@ function applyGeneralView() {
     const retainedRange = getGoogleDateRange(preset);
     retainedByAccount = computeRetainedByAccount(
         retainedRange ? retainedRange.since : null,
-        retainedRange ? retainedRange.until : null
+        retainedRange ? retainedRange.until : null,
+        filterMeta
     );
     const prevRange = getGooglePrevDateRange(preset);
     const gPrev    = prevRange ? computeGoogleAccountsData(preset, filterMeta, prevRange) : [];
@@ -1653,7 +1672,7 @@ function applyGeneralView() {
 
     // Previous retained
     const prevRetainedByAccount = prevRange ? computeRetainedByAccount(
-        prevRange.since || null, prevRange.until || null
+        prevRange.since || null, prevRange.until || null, filterMeta
     ) : {};
     const prevTotalRetained = Object.values(prevRetainedByAccount).reduce((s, v) => s + v, 0);
     const prevTotalCpa = prevTotalRetained > 0 ? prevTotalSpend / prevTotalRetained : null;
