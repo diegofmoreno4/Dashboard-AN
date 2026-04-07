@@ -296,14 +296,17 @@ function getPreviousPeriodParam(preset, explicitRange = null) {
     let currentStart, currentEnd;
     
     if (preset === 'last_7d') {
-        currentEnd = new Date(today);
-        currentStart = new Date(today); currentStart.setDate(currentStart.getDate() - 6);
+        // Últimos 7 días hasta ayer (excluyendo hoy)
+        currentEnd = new Date(today); currentEnd.setDate(currentEnd.getDate() - 1);
+        currentStart = new Date(currentEnd); currentStart.setDate(currentStart.getDate() - 6);
     } else if (preset === 'last_14d') {
-        currentEnd = new Date(today);
-        currentStart = new Date(today); currentStart.setDate(currentStart.getDate() - 13);
+        // Últimos 14 días hasta ayer (excluyendo hoy)
+        currentEnd = new Date(today); currentEnd.setDate(currentEnd.getDate() - 1);
+        currentStart = new Date(currentEnd); currentStart.setDate(currentStart.getDate() - 13);
     } else if (preset === 'last_30d') {
-        currentEnd = new Date(today);
-        currentStart = new Date(today); currentStart.setDate(currentStart.getDate() - 29);
+        // Últimos 30 días hasta ayer (excluyendo hoy)
+        currentEnd = new Date(today); currentEnd.setDate(currentEnd.getDate() - 1);
+        currentStart = new Date(currentEnd); currentStart.setDate(currentStart.getDate() - 29);
     } else if (preset === 'this_month_today') {
         currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
         currentEnd = new Date(today);
