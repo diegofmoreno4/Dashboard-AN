@@ -1590,9 +1590,11 @@ function applyGeneralView() {
     const gPrevMap = Object.fromEntries(gPrev.map(a => [a.accountId, a]));
 
     const metaAds = currentAdsData;
+    // Filter Meta data by account if needed
+    const filteredMetaAds = filterMeta ? metaAds.filter(a => a.accountId === filterMeta) : metaAds;
     // Single pass for Meta aggregates
     let mSpend = 0, mLeads = 0, mImpr = 0, mClicks = 0;
-    for (const a of metaAds) { mSpend += a.spend; mLeads += a.leads; mImpr += a.impressions; mClicks += a.linkClicks; }
+    for (const a of filteredMetaAds) { mSpend += a.spend; mLeads += a.leads; mImpr += a.impressions; mClicks += a.linkClicks; }
     // Single pass for Google aggregates
     let gCost = 0, gConv = 0, gImpr = 0, gClk = 0;
     for (const a of gAccounts) { gCost += a.cost; gConv += a.conversions; gImpr += a.impressions; gClk += a.clicks; }
@@ -1605,7 +1607,8 @@ function applyGeneralView() {
     const avgCpa = totalConv > 0 ? totalSpend / totalConv : null;
 
     let mPrevSpend = 0, mPrevLeads = 0, mPrevImpr = 0, mPrevClicks = 0;
-    for (const a of currentAccountsData) {
+    const filteredPrevMetaAds = filterMeta ? currentAccountsData.filter(a => a.accountId === filterMeta) : currentAccountsData;
+    for (const a of filteredPrevMetaAds) {
         mPrevSpend += a.prev?.spend || 0; mPrevLeads += a.prev?.leads || 0;
         mPrevImpr += a.prev?.impressions || 0; mPrevClicks += a.prev?.linkClicks || 0;
     }
