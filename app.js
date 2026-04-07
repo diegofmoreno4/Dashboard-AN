@@ -43,8 +43,9 @@ const RETAINED_BOARD_IDS = {
     '18398468519': '4603681023',
 };
 
+// Accounts with max preset restrictions (disabled to allow global date filters)
 const ACCOUNT_MAX_PRESET = {
-    'act_8871491509538618': 'last_30d',
+    // 'act_8871491509538618': 'last_30d', // Comentado para permitir filtros de fecha globales
 };
 
 // Accounts that need a smaller page limit to avoid "reduce data" API errors
