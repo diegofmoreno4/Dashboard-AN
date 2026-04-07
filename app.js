@@ -899,13 +899,15 @@ async function init() {
             `<option value="all">— All accounts (${allAccounts.length}) —</option>` +
             allAccounts.map(acc => `<option value="${escHtml(acc.id)}">${escHtml(acc.name)}</option>`).join('');
 
+        // Set the correct tab labels before any data arrives so the KPI
+        // headers read "Total Retained" / "Total CPA" from the very first render
+        switchTab('general');
+
         // Start all fetches in parallel
         const metaPromise = fetchAllData();
         const auxPromise = Promise.all([fetchGoogleData(), fetchRetainedData()]);
 
-        // Render as soon as Meta data is ready
         await metaPromise;
-        switchTab('general');
 
         // Then update again once Google + Retained finish
         await auxPromise;
