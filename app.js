@@ -448,33 +448,25 @@ function processAd(ad, creativesMap = {}, accountId = null) {
 
 /* ── UI — KPI Cards ─────────────────────────────────────────── */
 
-function updateKPICards(adsData) {
-    // Current-period totals from filtered ads
+function updateKPICards() {
+    // Use account-level data — same source as the accounts table, so KPI cards
+    // and table rows always show identical totals regardless of any ad-level filters.
     let totalSpend = 0, totalLeads = 0, totalImpressions = 0, totalClicks = 0;
-    let ctrSum = 0, ctrCount = 0;
+    let prevSpend  = 0, prevLeads  = 0, prevImpressions  = 0, prevClicks  = 0;
 
-    for (const a of adsData) {
+    for (const a of currentAccountsData) {
         totalSpend       += a.spend;
         totalLeads       += a.leads;
         totalImpressions += a.impressions;
         totalClicks      += a.linkClicks;
-        if (a.ctr > 0) { ctrSum += a.ctr; ctrCount++; }
-    }
-
-    // CPL as total_spend / total_leads — matches how the accounts table computes it
-    const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : null;
-    const avgCtr = ctrCount ? ctrSum / ctrCount : 0;
-
-    // Previous-period totals from account-level data — same source the table uses,
-    // so the trend % in the KPI cards matches the % shown in the table rows.
-    let prevSpend = 0, prevLeads = 0, prevImpressions = 0, prevClicks = 0;
-    for (const a of currentAccountsData) {
         prevSpend       += a.prev?.spend       || 0;
         prevLeads       += a.prev?.leads       || 0;
         prevImpressions += a.prev?.impressions || 0;
         prevClicks      += a.prev?.linkClicks  || 0;
     }
 
+    const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : null;
+    const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const prevCpl = prevLeads > 0 ? prevSpend / prevLeads : null;
     const prevCtr = prevImpressions > 0 ? (prevClicks / prevImpressions) * 100 : 0;
 
@@ -858,7 +850,7 @@ function resetDashboard() {
     currentDailyData = [];
     currentAccountsData = [];
     if (mainChart) { mainChart.destroy(); mainChart = null; }
-    updateKPICards([]);
+    updateKPICards();
     renderTable([]);
     renderAccountsTable([]);
     document.getElementById('chart-empty').classList.remove('hidden');
@@ -1861,7 +1853,7 @@ function getFilteredAds() {
 
 function applyTableFilters() {
     const filtered = getFilteredAds();
-    updateKPICards(filtered);
+    updateKPICards();
     renderTable(sortData(filtered, sortState.col, sortState.dir));
 }
 
@@ -1890,7 +1882,7 @@ function applyGlobalData() {
     applySortUI(sortState.col, sortState.dir);
     applySortUIAcc(sortStateAcc.col, sortStateAcc.dir);
 
-    updateKPICards(adsForTable);
+    updateKPICards();
 
     const chartData = aggregateDailyData(currentDailyData);
     renderChart(chartData, currentChartMode);
