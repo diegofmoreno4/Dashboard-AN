@@ -1274,7 +1274,8 @@ function getGoogleDateRange(preset) {
 }
 
 function computeGoogleAccountsData(preset, filterMetaId = null, explicitRange = null) {
-    const range = explicitRange || getGoogleDateRange(preset);
+    // Si se proporciona un rango explícito, usarlo directamente sin calcular desde preset
+    const range = explicitRange ? explicitRange : getGoogleDateRange(preset);
     let rows = googleRawDaily;
     if (range) rows = rows.filter(r => r.date >= range.since && r.date <= range.until);
     if (filterMetaId && filterMetaId !== 'all') {
