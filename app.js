@@ -292,34 +292,44 @@ function getPreviousPeriodParam(preset, explicitRange = null) {
         return `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(since), until: toLocalISO(until) }))}`;
     }
     
+    // Para presets, calcular el periodo actual primero y luego el anterior
+    let currentStart, currentEnd;
+    
     if (preset === 'last_7d') {
-        until = new Date(today); until.setDate(until.getDate() - 8);
-        since = new Date(today); since.setDate(since.getDate() - 14);
+        currentEnd = new Date(today);
+        currentStart = new Date(today); currentStart.setDate(currentStart.getDate() - 6);
     } else if (preset === 'last_14d') {
-        until = new Date(today); until.setDate(until.getDate() - 15);
-        since = new Date(today); since.setDate(since.getDate() - 28);
+        currentEnd = new Date(today);
+        currentStart = new Date(today); currentStart.setDate(currentStart.getDate() - 13);
     } else if (preset === 'last_30d') {
-        until = new Date(today); until.setDate(until.getDate() - 31);
-        since = new Date(today); since.setDate(since.getDate() - 60);
+        currentEnd = new Date(today);
+        currentStart = new Date(today); currentStart.setDate(currentStart.getDate() - 29);
     } else if (preset === 'this_month_today') {
-        since = new Date(today.getFullYear(), today.getMonth(), 1);
-        until = new Date(today);
+        currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        currentEnd = new Date(today);
     } else if (preset === 'this_month') {
-        since = new Date(today.getFullYear(), today.getMonth(), 1);
-        until = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        currentEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     } else if (preset === 'last_month') {
-        since = new Date(today.getFullYear(), today.getMonth() - 2, 1);
-        until = new Date(today.getFullYear(), today.getMonth() - 1, 0);
+        currentStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        currentEnd = new Date(today.getFullYear(), today.getMonth(), 0);
     } else if (preset === 'this_year') {
-        since = new Date(today.getFullYear() - 1, 0, 1);
-        until = new Date(today.getFullYear() - 1, 11, 31);
+        currentStart = new Date(today.getFullYear(), 0, 1);
+        currentEnd = new Date(today.getFullYear(), 11, 31);
     } else if (preset === 'custom') {
         const s = new Date(document.getElementById('date-start').value);
         const e = new Date(document.getElementById('date-end').value);
         const days = Math.round((e - s) / 86400000) + 1;
         until = new Date(s); until.setDate(until.getDate() - 1);
         since = new Date(until); since.setDate(since.getDate() - days + 1);
+        return `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(since), until: toLocalISO(until) }))}`;
     } else { return null; }
+    
+    // Calcular periodo anterior basado en la duración del periodo actual
+    const days = Math.round((currentEnd - currentStart) / 86400000) + 1;
+    until = new Date(currentStart); until.setDate(until.getDate() - 1);
+    since = new Date(until); since.setDate(since.getDate() - days + 1);
+    
     return `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(since), until: toLocalISO(until) }))}`;
 }
 
