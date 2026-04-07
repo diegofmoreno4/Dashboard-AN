@@ -78,6 +78,7 @@ const TOP_ADS_MAX = 15;
 /* ── State ──────────────────────────────────────────────────── */
 let mainChart = null;
 let currentChartMode = 'spend-leads';
+let fetchGeneration = 0;
 let globalAdsData = [];
 let globalDailyData = [];
 let globalAccountsData = [];
@@ -926,6 +927,7 @@ async function init() {
 }
 
 async function fetchAllData() {
+    const myGeneration = ++fetchGeneration;
     setLoading(true);
     document.getElementById('badge-loading').classList.remove('hidden');
     globalAdsData = [];
@@ -943,8 +945,7 @@ async function fetchAllData() {
             const today7d = new Date(); today7d.setHours(0,0,0,0);
             const end7d = new Date(today7d); end7d.setDate(end7d.getDate() - 1);
             const start7d = new Date(end7d); start7d.setDate(start7d.getDate() - 6);
-            const toStr7d = d => d.toISOString().split('T')[0];
-            const alert7dParam = `time_range=${encodeURIComponent(JSON.stringify({ since: toStr7d(start7d), until: toStr7d(end7d) }))}`;
+            const alert7dParam = `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(start7d), until: toLocalISO(end7d) }))}`;
             const [rawAdData, rawDailyData, creativesMap, prevMetrics, prevAdMap, alert7dMap] = await Promise.all([
                 fetchInsights(acc.id, accPreset, { level: 'ad', limit: 500 }),
                 fetchInsights(acc.id, accPreset, { level: 'campaign', timeIncrement: 1, limit: 500 }),
@@ -953,6 +954,9 @@ async function fetchAllData() {
                 accPrevParam ? fetchPreviousAdInsights(acc.id, accPrevParam) : Promise.resolve({}),
                 fetch7dAlertData(acc.id, alert7dParam)
             ]);
+
+            // Discard results if a newer fetch has started
+            if (myGeneration !== fetchGeneration) return;
 
             const filteredAds   = rawAdData.filter(ad => isCampaignAllowed(ad.campaign_id, ad.campaign_name));
             const filteredDaily = rawDailyData.filter(d  => isCampaignAllowed(d.campaign_id, d.campaign_name));
@@ -1015,6 +1019,8 @@ async function fetchAllData() {
     });
 
     await Promise.allSettled(promises);
+    // Only update UI if no newer fetch has started
+    if (myGeneration !== fetchGeneration) return;
     applyCurrentTab();
     setLoading(false);
     document.getElementById('badge-loading').classList.add('hidden');
