@@ -265,7 +265,9 @@ function getDateParam(preset) {
     if (preset === 'last_7d' || preset === 'last_14d' || preset === 'last_30d') {
         const today = new Date();
         const days = parseInt(preset.split('_')[1], 10);
+        // End: yesterday (today - 1)
         let end = new Date(today); end.setDate(end.getDate() - 1);
+        // Start: N days ago from yesterday (yesterday - N + 1)
         let start = new Date(end); start.setDate(start.getDate() - days + 1);
         return `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(start), until: toLocalISO(end) }))}`;
     }
@@ -1233,16 +1235,22 @@ function getGooglePrevDateRange(preset) {
 function getGoogleDateRange(preset) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     if (preset === 'last_7d') {
-        const s = new Date(today); s.setDate(s.getDate() - 7);
+        // End: yesterday (today - 1)
         const e = new Date(today); e.setDate(e.getDate() - 1);
+        // Start: 7 days ago from yesterday (yesterday - 7 + 1 = yesterday - 6)
+        const s = new Date(e); s.setDate(s.getDate() - 7 + 1);
         return { since: toLocalISO(s), until: toLocalISO(e) };
     } else if (preset === 'last_14d') {
-        const s = new Date(today); s.setDate(s.getDate() - 14);
+        // End: yesterday (today - 1)
         const e = new Date(today); e.setDate(e.getDate() - 1);
+        // Start: 14 days ago from yesterday (yesterday - 14 + 1)
+        const s = new Date(e); s.setDate(s.getDate() - 14 + 1);
         return { since: toLocalISO(s), until: toLocalISO(e) };
     } else if (preset === 'last_30d') {
-        const s = new Date(today); s.setDate(s.getDate() - 30);
+        // End: yesterday (today - 1)
         const e = new Date(today); e.setDate(e.getDate() - 1);
+        // Start: 30 days ago from yesterday (yesterday - 30 + 1)
+        const s = new Date(e); s.setDate(s.getDate() - 30 + 1);
         return { since: toLocalISO(s), until: toLocalISO(e) };
     } else if (preset === 'this_month_today') {
         return { since: toLocalISO(new Date(today.getFullYear(), today.getMonth(), 1)), until: toLocalISO(today) };
