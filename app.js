@@ -284,9 +284,12 @@ function getPreviousPeriodParam(preset) {
     } else if (preset === 'last_30d') {
         until = new Date(today); until.setDate(until.getDate() - 31);
         since = new Date(today); since.setDate(since.getDate() - 60);
-    } else if (preset === 'this_month' || preset === 'this_month_today') {
-        since = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        until = new Date(today.getFullYear(), today.getMonth(), 0);
+    } else if (preset === 'this_month_today') {
+        since = new Date(today.getFullYear(), today.getMonth(), 1);
+        until = new Date(today);
+    } else if (preset === 'this_month') {
+        since = new Date(today.getFullYear(), today.getMonth(), 1);
+        until = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     } else if (preset === 'last_month') {
         since = new Date(today.getFullYear(), today.getMonth() - 2, 1);
         until = new Date(today.getFullYear(), today.getMonth() - 1, 0);
@@ -1193,9 +1196,12 @@ function getGooglePrevDateRange(preset) {
     } else if (preset === 'last_30d') {
         until = new Date(today); until.setDate(until.getDate() - 30);
         since = new Date(today); since.setDate(since.getDate() - 60);
-    } else if (preset === 'this_month' || preset === 'this_month_today') {
-        since = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        until = new Date(today.getFullYear(), today.getMonth(), 0);
+    } else if (preset === 'this_month_today') {
+        since = new Date(today.getFullYear(), today.getMonth(), 1);
+        until = new Date(today);
+    } else if (preset === 'this_month') {
+        since = new Date(today.getFullYear(), today.getMonth(), 1);
+        until = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     } else if (preset === 'last_month') {
         since = new Date(today.getFullYear(), today.getMonth() - 2, 1);
         until = new Date(today.getFullYear(), today.getMonth() - 1, 0);
