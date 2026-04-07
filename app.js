@@ -245,12 +245,7 @@ async function fetchAccountSpend(accountId) {
     return 0;
 }
 
-function getDateParam(preset, explicitRange = null) {
-    // Si hay un rango explícito (custom), usarlo directamente
-    if (explicitRange) {
-        return `time_range=${encodeURIComponent(JSON.stringify({ since: explicitRange.since, until: explicitRange.until }))}`;
-    }
-    
+function getDateParam(preset) {
     if (preset === 'custom') {
         const start = document.getElementById('date-start').value;
         const end = document.getElementById('date-end').value;
@@ -278,20 +273,9 @@ function getDateParam(preset, explicitRange = null) {
     return `date_preset=${preset}`;
 }
 
-function getPreviousPeriodParam(preset, explicitRange = null) {
+function getPreviousPeriodParam(preset) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     let since, until;
-    
-    // Si hay un rango explícito (custom), calcular el periodo anterior equivalente
-    if (explicitRange) {
-        const start = new Date(explicitRange.since);
-        const end = new Date(explicitRange.until);
-        const days = Math.round((end - start) / 86400000) + 1;
-        until = new Date(start); until.setDate(until.getDate() - 1);
-        since = new Date(until); since.setDate(since.getDate() - days + 1);
-        return `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(since), until: toLocalISO(until) }))}`;
-    }
-    
     if (preset === 'last_7d') {
         until = new Date(today); until.setDate(until.getDate() - 8);
         since = new Date(today); since.setDate(since.getDate() - 14);
@@ -329,14 +313,14 @@ function getPreviousPeriodParam(preset, explicitRange = null) {
  * timeIncrement: null | 1
  * extraFields: additional comma-separated fields
  */
-async function fetchInsights(accountId, preset, { level = 'ad', timeIncrement = null, extraFields = '', limit = 500, explicitRange = null } = {}) {
+async function fetchInsights(accountId, preset, { level = 'ad', timeIncrement = null, extraFields = '', limit = 500 } = {}) {
     const baseFields = {
         ad: 'campaign_id,campaign_name,ad_id,account_name,ad_name,reach,spend,impressions,actions,cost_per_action_type,ctr,inline_link_clicks,cpc',
         campaign: 'campaign_id,campaign_name,reach,spend,impressions,actions,cost_per_action_type,ctr,inline_link_clicks,cpc',
         account: 'reach,spend,impressions,actions,inline_link_clicks',
     };
     const fields = extraFields || baseFields[level] || baseFields.ad;
-    const param = getDateParam(preset, explicitRange);
+    const param = getDateParam(preset);
     const tiParam = timeIncrement ? `&time_increment=${timeIncrement}` : '';
     const url = `${BASE_URL}/${accountId}/insights?fields=${fields}&level=${level}&${param}${tiParam}&limit=${limit}&access_token=${ACCESS_TOKEN}`;
     return await fetchAllPages(url);
@@ -968,10 +952,6 @@ async function fetchAllData() {
     window.lastFetchTime = Date.now();
 
     const datePreset = document.getElementById('date-select').value;
-    const dateRange = datePreset === 'custom' ? { 
-        since: document.getElementById('date-start').value, 
-        until: document.getElementById('date-end').value 
-    } : null;
 
     // ── Phase 1: Main insights only (spend, leads, daily chart) ─────────
     // Renders the dashboard immediately with 2 requests per account
@@ -980,20 +960,6 @@ async function fetchAllData() {
     const phase1 = allAccounts.map(async (acc) => {
         try {
             const accPreset = capPreset(acc.id, datePreset);
-            const accPrevParam = getPreviousPeriodParam(accPreset, dateRange);
-            // 7-day alert: last 7 days excluding today
-            const today7d = new Date(); today7d.setHours(0,0,0,0);
-            const end7d = new Date(today7d); end7d.setDate(end7d.getDate() - 1);
-            const start7d = new Date(end7d); start7d.setDate(start7d.getDate() - 6);
-            const alert7dParam = `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(start7d), until: toLocalISO(end7d) }))}`;
-            const accLimit = ACCOUNT_PAGE_LIMIT[acc.id] || 500;
-            const [rawAdData, rawDailyData, creativesMap, prevMetrics, prevAdMap, alert7dMap] = await Promise.all([
-                fetchInsights(acc.id, accPreset, { level: 'ad', limit: accLimit, explicitRange: dateRange }),
-                fetchInsights(acc.id, accPreset, { level: 'campaign', timeIncrement: 1, limit: accLimit, explicitRange: dateRange }),
-                fetchAdCreatives(acc.id),
-                accPrevParam ? fetchPreviousInsights(acc.id, accPrevParam) : Promise.resolve(null),
-                accPrevParam ? fetchPreviousAdInsights(acc.id, accPrevParam) : Promise.resolve({}),
-                fetch7dAlertData(acc.id, alert7dParam)
             const accLimit  = ACCOUNT_PAGE_LIMIT[acc.id] || 500;
             const [rawAdData, rawDailyData] = await Promise.all([
                 fetchInsights(acc.id, accPreset, { level: 'ad',       limit: accLimit }),
@@ -1255,20 +1221,9 @@ function computeRetainedByAccount(since, until, filterMetaId = null) {
     return result;
 }
 
-function getGooglePrevDateRange(preset, explicitRange = null) {
+function getGooglePrevDateRange(preset) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     let since, until;
-    
-    // Si hay un rango explícito (custom), calcular el periodo anterior equivalente
-    if (explicitRange) {
-        const start = new Date(explicitRange.since);
-        const end = new Date(explicitRange.until);
-        const days = Math.round((end - start) / 86400000) + 1;
-        until = new Date(start); until.setDate(until.getDate() - 1);
-        since = new Date(until); since.setDate(since.getDate() - days + 1);
-        return { since: toLocalISO(since), until: toLocalISO(until) };
-    }
-    
     if (preset === 'last_7d') {
         until = new Date(today); until.setDate(until.getDate() - 7);
         since = new Date(today); since.setDate(since.getDate() - 14);
@@ -1524,10 +1479,8 @@ function applyGoogleView() {
     const preset   = document.getElementById('date-select').value;
     const metaAccId = document.getElementById('account-select').value;
     const filterMeta = metaAccId !== 'all' ? metaAccId : null;
-    const gRange = getGoogleDateRange(preset);
     const gAccounts = computeGoogleAccountsData(preset, filterMeta);
-    // Pass the gRange to getGooglePrevDateRange for custom date ranges
-    const prevRange = getGooglePrevDateRange(preset, gRange);
+    const prevRange = getGooglePrevDateRange(preset);
     const gPrev = prevRange ? computeGoogleAccountsData(preset, filterMeta, prevRange) : [];
     const prevMap = Object.fromEntries(gPrev.map(a => [a.accountId, a]));
     const period = PRESET_TO_GOOGLE_PERIOD[preset] || 'LAST_30_DAYS';
@@ -1676,8 +1629,7 @@ function applyGeneralView() {
         retainedRange ? retainedRange.until : null,
         filterMeta
     );
-    // Pass the retainedRange to getGooglePrevDateRange for custom date ranges
-    const prevRange = getGooglePrevDateRange(preset, retainedRange);
+    const prevRange = getGooglePrevDateRange(preset);
     const gPrev    = prevRange ? computeGoogleAccountsData(preset, filterMeta, prevRange) : [];
     const gPrevMap = Object.fromEntries(gPrev.map(a => [a.accountId, a]));
 
