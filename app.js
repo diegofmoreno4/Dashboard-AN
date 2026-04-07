@@ -1641,7 +1641,7 @@ function applyGeneralView() {
         prevRange.since || null, prevRange.until || null, filterMeta
     ) : {};
     const prevTotalRetained = Object.values(prevRetainedByAccount).reduce((s, v) => s + v, 0);
-    const prevTotalCpa = prevTotalRetained > 0 ? prevTotalSpend / prevTotalRetained : null;
+    const prevTotalCpa = prevTotalRetained > 0 ? mPrevSpend / prevTotalRetained : null;
 
     animateValue('kpi-total-spend', fmt.currency(totalSpend));
     if (window.updateKPITrend) window.updateKPITrend('trend-spend', totalSpend, prevTotalSpend, 'neutral');
@@ -1653,7 +1653,7 @@ function applyGeneralView() {
     if (window.updateKPITrend) window.updateKPITrend('trend-ctr', avgCtr, prevAvgCtr, false);
 
     const totalRetained = Object.values(retainedByAccount).reduce((s, v) => s + v, 0);
-    const totalCpa = totalRetained > 0 ? totalSpend / totalRetained : null;
+    const totalCpa = totalRetained > 0 ? mSpend / totalRetained : null;
     animateValue('kpi-total-impressions', fmt.int(totalRetained));
     if (window.updateKPITrend) window.updateKPITrend('trend-reach', totalRetained, prevTotalRetained, false);
     animateValue('kpi-total-clicks', totalCpa !== null ? fmt.currency(totalCpa) : 'N/A');
