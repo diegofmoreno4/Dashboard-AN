@@ -169,6 +169,23 @@ function toLocalISO(d) {
     return `${y}-${m}-${day}`;
 }
 
+/**
+ * Given a current period range {since, until}, returns the previous period
+ * of exactly the same duration, ending the day before `since`.
+ * This is the single source of truth for all prev-period comparisons.
+ */
+function computePrevRange(range) {
+    if (!range || !range.since || !range.until) return null;
+    const sinceDate = new Date(range.since + 'T00:00:00');
+    const untilDate = new Date(range.until + 'T00:00:00');
+    const days = Math.round((untilDate - sinceDate) / 86400000) + 1;
+    const prevUntil = new Date(sinceDate);
+    prevUntil.setDate(prevUntil.getDate() - 1);
+    const prevSince = new Date(prevUntil);
+    prevSince.setDate(prevSince.getDate() - days + 1);
+    return { since: toLocalISO(prevSince), until: toLocalISO(prevUntil) };
+}
+
 /** Build a Meta Graph API URL */
 function metaUrl(path, params = {}) {
     const qs = new URLSearchParams({ ...params, access_token: ACCESS_TOKEN });
@@ -276,30 +293,9 @@ function getDateParam(preset) {
 }
 
 function getPreviousPeriodParam(preset) {
-    // Obtener las fechas reales del periodo actual usando getDateParam y parsearlas
-    const currentParam = getDateParam(preset);
-    if (!currentParam) return null;
-    
-    // Parsear el parámetro para obtener since y until
-    let currentStart, currentEnd;
-    if (currentParam.startsWith('time_range=')) {
-        const jsonStr = decodeURIComponent(currentParam.substring('time_range='.length));
-        const range = JSON.parse(jsonStr);
-        currentStart = new Date(range.since);
-        currentEnd = new Date(range.until);
-    } else if (currentParam.startsWith('date_preset=')) {
-        // Para date_preset no podemos calcular periodo anterior dinámicamente
-        return null;
-    } else {
-        return null;
-    }
-    
-    // Calcular periodo anterior basado en la duración del periodo actual
-    const days = Math.round((currentEnd - currentStart) / 86400000) + 1;
-    const until = new Date(currentStart); until.setDate(until.getDate() - 1);
-    const since = new Date(until); since.setDate(since.getDate() - days + 1);
-    
-    return `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(since), until: toLocalISO(until) }))}`;
+    const prev = computePrevRange(getGoogleDateRange(preset));
+    if (!prev) return null;
+    return `time_range=${encodeURIComponent(JSON.stringify({ since: prev.since, until: prev.until }))}`;
 }
 
 /**
@@ -453,10 +449,9 @@ function processAd(ad, creativesMap = {}, accountId = null) {
 /* ── UI — KPI Cards ─────────────────────────────────────────── */
 
 function updateKPICards(adsData) {
-    // Single pass over adsData for all current-period aggregates
+    // Current-period totals from filtered ads
     let totalSpend = 0, totalLeads = 0, totalImpressions = 0, totalClicks = 0;
-    let prevSpend = 0, prevLeads = 0, prevImpressions = 0, prevClicks = 0;
-    let ctrSum = 0, ctrCount = 0, cplSum = 0, cplCount = 0;
+    let ctrSum = 0, ctrCount = 0;
 
     for (const a of adsData) {
         totalSpend       += a.spend;
@@ -464,22 +459,27 @@ function updateKPICards(adsData) {
         totalImpressions += a.impressions;
         totalClicks      += a.linkClicks;
         if (a.ctr > 0) { ctrSum += a.ctr; ctrCount++; }
-        if (a.cpl !== null) { cplSum += a.cpl; cplCount++; }
-        if (a.prev) {
-            prevSpend       += a.prev.spend || 0;
-            prevLeads       += a.prev.leads || 0;
-            prevImpressions += a.prev.impressions || 0;
-            prevClicks      += a.prev.linkClicks || 0;
-        }
     }
 
+    // CPL as total_spend / total_leads — matches how the accounts table computes it
+    const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : null;
     const avgCtr = ctrCount ? ctrSum / ctrCount : 0;
-    const avgCpl = cplCount ? cplSum / cplCount : null;
-    const prevCtr = prevImpressions > 0 ? (prevClicks / prevImpressions) * 100 : 0;
+
+    // Previous-period totals from account-level data — same source the table uses,
+    // so the trend % in the KPI cards matches the % shown in the table rows.
+    let prevSpend = 0, prevLeads = 0, prevImpressions = 0, prevClicks = 0;
+    for (const a of currentAccountsData) {
+        prevSpend       += a.prev?.spend       || 0;
+        prevLeads       += a.prev?.leads       || 0;
+        prevImpressions += a.prev?.impressions || 0;
+        prevClicks      += a.prev?.linkClicks  || 0;
+    }
+
     const prevCpl = prevLeads > 0 ? prevSpend / prevLeads : null;
+    const prevCtr = prevImpressions > 0 ? (prevClicks / prevImpressions) * 100 : 0;
 
     animateValue('kpi-total-spend', fmt.currency(totalSpend));
-    if (window.updateKPITrend) window.updateKPITrend('trend-spend', totalSpend, prevSpend, true);
+    if (window.updateKPITrend) window.updateKPITrend('trend-spend', totalSpend, prevSpend, 'neutral');
 
     animateValue('kpi-total-leads', fmt.int(totalLeads));
     if (window.updateKPITrend) window.updateKPITrend('trend-leads', totalLeads, prevLeads, false);
@@ -727,7 +727,7 @@ function renderTable(adsData) {
                 <td class="ad-name-cell col-name" title="${escHtml(ad.adName)}">${escHtml(ad.adName)}</td>
                 <td class="col-name" style="color:var(--text-3); font-size:0.85rem; font-weight:500" title="${escHtml(ad.accountName)}">${escHtml(ad.accountName)}</td>
                 <td style="color:${statusColor}; font-weight:bold; font-size:0.8rem;">${escHtml(statusText)}</td>
-                <td class="currency">${fmt.currency(ad.spend)}${p ? delta(ad.spend, p.spend) : ''}</td>
+                <td class="currency">${fmt.currency(ad.spend)}${p ? delta(ad.spend, p.spend, false, true) : ''}</td>
                 <td class="leads-cell ${ad.leads > 0 ? 'has-leads' : ''}">${ad.leads}${p ? delta(ad.leads, p.leads) : ''}</td>
                 <td class="currency">${ad.cpl !== null ? fmt.currency(ad.cpl) : 'N/A'}${p ? delta(ad.cpl, p.cpl, true) : ''}</td>
                 <td class="currency">${ad.cpc !== null ? fmt.currency(ad.cpc) : 'N/A'}${p ? delta(ad.cpc, p.cpc, true) : ''}</td>
@@ -737,11 +737,11 @@ function renderTable(adsData) {
     });
 }
 
-function delta(current, prev, invert = false) {
+function delta(current, prev, invert = false, neutral = false) {
     if (prev === null || prev === undefined || prev === 0 || current === null) return '';
     const pct = ((current - prev) / Math.abs(prev)) * 100;
     const positive = invert ? pct < 0 : pct >= 0;
-    const color = positive ? 'var(--delta-pos)' : 'var(--delta-neg)';
+    const color = neutral ? '#b8860b' : (positive ? 'var(--delta-pos)' : 'var(--delta-neg)');
     const sign = pct >= 0 ? '+' : '';
     return `<span class="kpi-delta" style="color:${color}">${sign}${pct.toFixed(0)}%</span>`;
 }
@@ -764,7 +764,7 @@ function renderAccountsTable(accountsData) {
                 <td>${escHtml(acc.categoria)}</td>
                 <td class="currency">${acc.budget > 0 ? fmt.currency(acc.budget) : '-'}</td>
                 <td>${complianceCellHtml(acc.spend, acc.budget)}</td>
-                <td class="currency">${fmt.currency(acc.spend)}${p ? delta(acc.spend, p.spend) : ''}</td>
+                <td class="currency">${fmt.currency(acc.spend)}${p ? delta(acc.spend, p.spend, false, true) : ''}</td>
                 <td class="leads-cell ${acc.leads > 0 ? 'has-leads' : ''}">${acc.leads}${p ? delta(acc.leads, p.leads) : ''}</td>
                 <td class="currency">${acc.cpl !== null && acc.cpl > 0 ? fmt.currency(acc.cpl) : 'N/A'}${p ? delta(acc.cpl, p.cpl, true) : ''}</td>
                 <td class="currency">${acc.cpc !== null && acc.cpc > 0 ? fmt.currency(acc.cpc) : 'N/A'}${p ? delta(acc.cpc, p.cpc, true) : ''}</td>
@@ -1217,19 +1217,7 @@ function computeRetainedByAccount(since, until, filterMetaId = null) {
 }
 
 function getGooglePrevDateRange(preset) {
-    // Obtener las fechas reales del periodo actual usando getGoogleDateRange
-    const currentRange = getGoogleDateRange(preset);
-    if (!currentRange) return null;
-    
-    const currentStart = new Date(currentRange.since);
-    const currentEnd = new Date(currentRange.until);
-    
-    // Calcular periodo anterior basado en la duración del periodo actual
-    const days = Math.round((currentEnd - currentStart) / 86400000) + 1;
-    const until = new Date(currentStart); until.setDate(until.getDate() - 1);
-    const since = new Date(until); since.setDate(since.getDate() - days + 1);
-    
-    return { since: toLocalISO(since), until: toLocalISO(until) };
+    return computePrevRange(getGoogleDateRange(preset));
 }
 
 function getGoogleDateRange(preset) {
@@ -1487,7 +1475,7 @@ function applyGoogleView() {
     const prevCpa = prevConv > 0 ? prevCost / prevConv : null;
 
     animateValue('kpi-total-spend', fmt.currency(totalCost));
-    if (window.updateKPITrend) window.updateKPITrend('trend-spend', totalCost, prevCost, true);
+    if (window.updateKPITrend) window.updateKPITrend('trend-spend', totalCost, prevCost, 'neutral');
     animateValue('kpi-total-leads', fmt.int(totalConv));
     if (window.updateKPITrend) window.updateKPITrend('trend-leads', totalConv, prevConv, false);
     animateValue('kpi-avg-cpl', avgCpa !== null ? fmt.currency(avgCpa) : 'N/A');
@@ -1664,7 +1652,7 @@ function applyGeneralView() {
     const prevTotalCpa = prevTotalRetained > 0 ? prevTotalSpend / prevTotalRetained : null;
 
     animateValue('kpi-total-spend', fmt.currency(totalSpend));
-    if (window.updateKPITrend) window.updateKPITrend('trend-spend', totalSpend, prevTotalSpend, true);
+    if (window.updateKPITrend) window.updateKPITrend('trend-spend', totalSpend, prevTotalSpend, 'neutral');
     animateValue('kpi-total-leads', fmt.int(totalConv));
     if (window.updateKPITrend) window.updateKPITrend('trend-leads', totalConv, prevTotalConv, false);
     animateValue('kpi-avg-cpl', avgCpa !== null ? fmt.currency(avgCpa) : 'N/A');
@@ -1788,7 +1776,7 @@ function renderGoogleAccountsTable(accounts) {
                 <td>${escHtml(a.categoria)}</td>
                 <td class="currency">${a.budget > 0 ? fmt.currency(a.budget) : '-'}</td>
                 <td>${complianceCellHtml(a.cost, a.budget)}</td>
-                <td class="currency">${fmt.currency(a.cost)}${p ? delta(a.cost, p.cost) : ''}</td>
+                <td class="currency">${fmt.currency(a.cost)}${p ? delta(a.cost, p.cost, false, true) : ''}</td>
                 <td class="leads-cell ${a.conversions > 0 ? 'has-leads' : ''}">${fmt.int(a.conversions)}${p ? delta(a.conversions, p.conversions) : ''}</td>
                 <td class="currency">${a.costPerConv !== null ? fmt.currency(a.costPerConv) : 'N/A'}${p ? delta(a.costPerConv, p.costPerConv, true) : ''}</td>
                 <td>${fmt.int(a.impressions)}${p ? delta(a.impressions, p.impressions) : ''}</td>
@@ -1815,7 +1803,7 @@ function renderGeneralAccountsTable(rows) {
                 <td style="font-size:0.8rem; color:var(--text-3)">${escHtml(r.categoria)}</td>
                 <td class="currency">${r.budget > 0 ? fmt.currency(r.budget) : '<span style="color:var(--text-3)">—</span>'}</td>
                 <td>${complianceCellHtml(r.spend, r.budget)}</td>
-                <td class="currency">${fmt.currency(r.spend)}${p ? delta(r.spend, p.spend) : ''}</td>
+                <td class="currency">${fmt.currency(r.spend)}${p ? delta(r.spend, p.spend, false, true) : ''}</td>
                 <td class="leads-cell ${r.convs > 0 ? 'has-leads' : ''}">${fmt.int(r.convs)}${p ? delta(r.convs, p.convs) : ''}</td>
                 <td class="currency">${r.cpl !== null ? fmt.currency(r.cpl) : 'N/A'}${p ? delta(r.cpl, pcpl, true) : ''}</td>
                 <td class="retained-cell ${r.retained > 0 ? 'has-retained' : ''}">${r.retained > 0 ? fmt.int(r.retained) : '<span style="color:var(--text-3)">—</span>'}</td>
@@ -2167,6 +2155,18 @@ window.showToast = function (msg) {
     setTimeout(() => { t.classList.add('hide'); setTimeout(() => t.remove(), 300); }, 2500);
 };
 
+/** Formats a {since, until} range as a compact label, e.g. "Mar 24-30" or "Mar 31 – Apr 6" */
+function formatDateRangeShort(range) {
+    if (!range || !range.since || !range.until) return '';
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const s = new Date(range.since + 'T00:00:00');
+    const u = new Date(range.until + 'T00:00:00');
+    if (s.getMonth() === u.getMonth() && s.getFullYear() === u.getFullYear()) {
+        return `${MONTHS[s.getMonth()]} ${s.getDate()}-${u.getDate()}`;
+    }
+    return `${MONTHS[s.getMonth()]} ${s.getDate()} – ${MONTHS[u.getMonth()]} ${u.getDate()}`;
+}
+
 window.updateKPITrend = function (id, current, prev, invert = false) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -2174,12 +2174,18 @@ window.updateKPITrend = function (id, current, prev, invert = false) {
     const ratio = ((current - prev) / prev) * 100;
     if (Math.abs(ratio) < 0.1) { el.innerHTML = '&nbsp;'; el.className = 'kpi-trend trend-neu'; return; }
     const isAbove = ratio > 0;
-    const isGood  = invert ? !isAbove : isAbove;
-    const cls  = isGood ? 'trend-pos' : 'trend-neg';
+    const isGood  = invert === true ? !isAbove : isAbove;
+    const cls  = invert === 'neutral' ? 'trend-neu' : (isGood ? 'trend-pos' : 'trend-neg');
     const icon = isAbove ? '▲' : '▼';
     const sign = isAbove ? '+' : '';
-    el.innerHTML  = `${icon} ${sign}${Math.abs(ratio).toFixed(1)}%`;
-    el.className  = `kpi-trend ${cls}`;
+
+    // Compute the previous period label from the active date preset
+    const preset    = document.getElementById('date-select')?.value;
+    const prevRange = computePrevRange(getGoogleDateRange(preset));
+    const periodLbl = prevRange ? `<span class="trend-period">vs ${formatDateRangeShort(prevRange)}</span>` : '';
+
+    el.innerHTML = `${icon} ${sign}${Math.abs(ratio).toFixed(1)}% ${periodLbl}`;
+    el.className = `kpi-trend ${cls}`;
 };
 
 window.generateSparklineArray = function (accountId, platform) {
