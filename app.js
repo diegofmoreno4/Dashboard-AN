@@ -47,6 +47,11 @@ const ACCOUNT_MAX_PRESET = {
     'act_8871491509538618': 'last_30d',
 };
 
+// Accounts that need a smaller page limit to avoid "reduce data" API errors
+const ACCOUNT_PAGE_LIMIT = {
+    'act_8871491509538618': 100,
+};
+
 const PRESET_ORDER = ['last_7d', 'last_14d', 'this_month', 'this_month_today', 'last_30d', 'last_month', 'this_year', 'maximum', 'custom'];
 
 function capPreset(accountId, preset) {
@@ -946,9 +951,10 @@ async function fetchAllData() {
             const end7d = new Date(today7d); end7d.setDate(end7d.getDate() - 1);
             const start7d = new Date(end7d); start7d.setDate(start7d.getDate() - 6);
             const alert7dParam = `time_range=${encodeURIComponent(JSON.stringify({ since: toLocalISO(start7d), until: toLocalISO(end7d) }))}`;
+            const accLimit = ACCOUNT_PAGE_LIMIT[acc.id] || 500;
             const [rawAdData, rawDailyData, creativesMap, prevMetrics, prevAdMap, alert7dMap] = await Promise.all([
-                fetchInsights(acc.id, accPreset, { level: 'ad', limit: 500 }),
-                fetchInsights(acc.id, accPreset, { level: 'campaign', timeIncrement: 1, limit: 500 }),
+                fetchInsights(acc.id, accPreset, { level: 'ad', limit: accLimit }),
+                fetchInsights(acc.id, accPreset, { level: 'campaign', timeIncrement: 1, limit: accLimit }),
                 fetchAdCreatives(acc.id),
                 accPrevParam ? fetchPreviousInsights(acc.id, accPrevParam) : Promise.resolve(null),
                 accPrevParam ? fetchPreviousAdInsights(acc.id, accPrevParam) : Promise.resolve({}),
